@@ -171,7 +171,12 @@
   function randRoom(){ var c="ABCDEFGHJKMNPQRSTUVWXYZ23456789",s=""; for(var i=0;i<4;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
 
   var MAX = 4;                 // receptores máximos
-  var BROKER = "wss://broker.hivemq.com:8884/mqtt";
+  // Varios servidores públicos; si uno falla, mqtt salta al siguiente solo.
+  var BROKERS = [
+    {protocol:'wss', host:'broker.emqx.io',    port:8084, path:'/mqtt'},
+    {protocol:'wss', host:'broker.hivemq.com', port:8884, path:'/mqtt'},
+    {protocol:'wss', host:'test.mosquitto.org',port:8081, path:'/mqtt'}
+  ];
   var client=null, room="", role="", topicCmd="", topicPres="";
 
   // recordar último código en este teléfono
@@ -194,7 +199,7 @@
   // ---------- conexión MQTT ----------
   function connect(onMsg, onReady){
     var cid = 'lv_'+role+'_'+Math.random().toString(16).slice(2,8);
-    client = mqtt.connect(BROKER, {clientId:cid, keepalive:30, reconnectPeriod:2000, connectTimeout:8000});
+    client = mqtt.connect({servers:BROKERS, path:'/mqtt', clientId:cid, keepalive:30, reconnectPeriod:3000, connectTimeout:6000});
     client.on('connect', function(){
       client.subscribe([topicCmd, topicPres], function(){});
       onReady && onReady();

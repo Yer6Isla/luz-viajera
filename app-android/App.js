@@ -10,7 +10,13 @@ import { VolumeManager } from 'react-native-volume-manager';
 import mqtt from '@taoqf/react-native-mqtt';
 
 // ================== Configuración ==================
-const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
+// Varios servidores públicos; si uno falla, salta al siguiente solo.
+const BROKERS = [
+  { protocol: 'wss', host: 'broker.emqx.io', port: 8084, path: '/mqtt' },
+  { protocol: 'wss', host: 'broker.hivemq.com', port: 8884, path: '/mqtt' },
+  { protocol: 'wss', host: 'test.mosquitto.org', port: 8081, path: '/mqtt' },
+];
+const connectMqtt = (cid) => mqtt.connect({ servers: BROKERS, path: '/mqtt', clientId: cid, keepalive: 30, reconnectPeriod: 3000, connectTimeout: 6000 });
 const MAX = 4;
 const DEFAULT_PIN = '2580';
 const UNLOCK_HOLD_MS = 2500;
@@ -72,7 +78,7 @@ function useEngine(room, active) {
   useEffect(() => {
     if (!active) return;
     const cid = `lv_mando_${Math.random().toString(16).slice(2, 8)}`;
-    const client = mqtt.connect(BROKER, { clientId: cid, keepalive: 30, reconnectPeriod: 2000 });
+    const client = connectMqtt(cid);
     cRef.current = client;
     client.on('connect', () => { setConnOk(true); client.subscribe(topicPres); });
     client.on('reconnect', () => setConnOk(false));
@@ -176,7 +182,7 @@ function Decoy({ cfg, onSecret }) {
     if (!isReceiver) return;
     const topicCmd = `bretxy/lv/${cfg.room}/cmd`;
     const topicPres = `bretxy/lv/${cfg.room}/pres`;
-    const client = mqtt.connect(BROKER, { clientId: `lv_${num}_${Math.random().toString(16).slice(2, 8)}`, keepalive: 30, reconnectPeriod: 2000 });
+    const client = connectMqtt(`lv_${num}_${Math.random().toString(16).slice(2, 8)}`);
     client.on('connect', () => { client.subscribe(topicCmd); send(); });
     client.on('message', (t, payload) => {
       if (t !== topicCmd) return;
