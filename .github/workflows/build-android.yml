@@ -26,10 +26,10 @@ jobs:
         run: npm install
       - name: Expo prebuild (Android)
         run: npx expo prebuild --platform android --no-install
-      - name: Build debug APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Build release APK (standalone, debug-signed)
+        run: cd android && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
       - name: Copy APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk linterna.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk linterna.apk
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
