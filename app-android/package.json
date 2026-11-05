@@ -15,7 +15,8 @@
     "expo-status-bar": "~1.12.1",
     "@taoqf/react-native-mqtt": "^3.0.4",
     "react": "18.2.0",
-    "react-native": "0.74.5"
+    "react-native": "0.74.5",
+    "react-native-volume-manager": "^2.2.0"
   },
   "private": true
 }
