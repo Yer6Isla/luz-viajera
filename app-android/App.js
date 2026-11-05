@@ -6,7 +6,7 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useKeepAwake } from 'expo-keep-awake';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import mqtt from 'mqtt';
+import mqtt from '@taoqf/react-native-mqtt';
 
 // ================== Configuración ==================
 const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
