@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Luz Viajera</title>
+<!-- Librería para que los celulares se hablen entre sí (MQTT sobre WebSocket) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+<style>
+  /* Paleta oscura (menos luz que delate la pantalla en escena) */
+  :root{
+    --bg:#07090d; --panel:#111722; --panel2:#0b1018; --line:#1e2a3a;
+    --fg:#e8eef7; --muted:#8aa0bd; --accent:#38e1c8; --accent2:#9b7bff;
+    --on:#ffd24a; --danger:#ff5d6c; --ok:#35d07f;
+    --r:16px; --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+    overflow:hidden;
+  }
+  .screen{position:fixed;inset:0;display:none;flex-direction:column;
+    padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left));}
+  .screen.active{display:flex}
+  h1{font-size:1.5rem;margin:0 0 2px;letter-spacing:.3px}
+  .sub{color:var(--muted);font-size:.9rem;margin:0 0 18px}
+  label{display:block;color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px}
+  input[type=text]{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--fg);
+    font-size:1.4rem;letter-spacing:4px;text-align:center;padding:14px;border-radius:var(--r);font-family:var(--font)}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+    background:var(--panel);border:1px solid var(--line);color:var(--fg);
+    font-size:1.05rem;font-weight:600;padding:16px;border-radius:var(--r);cursor:pointer;transition:transform .05s}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),#1fb8a3);color:#042;border:none}
+  .btn.violet{background:linear-gradient(135deg,var(--accent2),#6c4bd8);color:#fff;border:none}
+  .btn.danger{background:transparent;border-color:var(--danger);color:var(--danger)}
+  .roles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .roles .btn{flex-direction:column;gap:4px;padding:18px 8px}
+  .roles .btn small{color:var(--muted);font-weight:400;font-size:.72rem}
+  .spacer{flex:1}
+  .foot{color:var(--muted);font-size:.74rem;text-align:center;line-height:1.5;margin-top:12px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:middle}
+  .dot.ok{background:var(--ok)} .dot.bad{background:var(--danger)}
+  .status-line{display:flex;align-items:center;font-size:.82rem;color:var(--muted);margin-bottom:10px}
+
+  /* ---- Pantalla RECEPTOR ---- */
+  #recGlow{position:fixed;inset:0;background:#fff;opacity:0;transition:opacity .08s;pointer-events:none;z-index:1}
+  #recUI{position:relative;z-index:2;display:flex;flex-direction:column;height:100%}
+  .rec-badge{font-size:4rem;font-weight:800;line-height:1;margin:auto auto 6px;
+    width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    border:2px solid var(--line);background:var(--panel2)}
+  .rec-state{text-align:center;color:var(--muted);font-size:.95rem;margin-bottom:auto}
+  .rec-on .rec-badge{border-color:var(--on);color:var(--on);box-shadow:0 0 40px -6px var(--on)}
+
+  /* ---- Pantalla MANDO ---- */
+  .mando-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .mando-head h1{font-size:1.2rem}
+  .roster{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+  .cell{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 4px;text-align:center;position:relative;min-height:74px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+  .cell .n{font-size:1.5rem;font-weight:800}
+  .cell .meta{font-size:.62rem;color:var(--muted)}
+  .cell.off-line{opacity:.35}
+  .cell.lit{border-color:var(--on);box-shadow:0 0 22px -8px var(--on)}
+  .cell.lit .n{color:var(--on)}
+  .cell.dest{outline:2px solid var(--accent);outline-offset:1px}
+  .cell .tag{position:absolute;top:4px;right:6px;font-size:.6rem}
+  .hand{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--panel);border:1px dashed var(--line);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:.95rem}
+  .hand b{color:var(--accent);font-size:1.2rem}
+  .destrow{display:flex;gap:8px;margin-bottom:12px;align-items:center}
+  .destrow .lbl{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:1px}
+  .destpick{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+  .dpill{flex:1;min-width:44px;text-align:center;padding:10px 0;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-weight:700;cursor:pointer}
+  .dpill.sel{background:var(--accent);color:#042;border-color:var(--accent)}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:auto}
+  .actions .btn{padding:20px 8px;font-size:1.1rem}
+  .mini{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  .mini .btn{padding:13px;font-size:.92rem}
+  .hint{font-size:.68rem;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5}
+  .toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);
+    background:#000c;border:1px solid var(--line);padding:10px 16px;border-radius:999px;font-size:.85rem;z-index:30;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+  .toast.show{opacity:1}
+  .link{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+
+<!-- ============ INICIO ============ -->
+<section id="scStart" class="screen active">
+  <h1>Luz Viajera</h1>
+  <p class="sub">Prototipo del truco · pasa la luz entre celulares</p>
+
+  <label>Código de sala (igual en todos los celulares)</label>
+  <input id="room" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false">
+
+  <label>¿Qué es este celular?</label>
+  <div class="roles">
+    <button class="btn violet" data-role="mando">🎛️ Mando<small>el que controla todo</small></button>
+    <button class="btn" data-role="1">1<small>receptor</small></button>
+    <button class="btn" data-role="2">2<small>receptor</small></button>
+    <button class="btn" data-role="3">3<small>receptor</small></button>
+    <button class="btn" data-role="4">4<small>receptor</small></button>
+  </div>
+
+  <div class="spacer"></div>
+  <p class="foot">Abre esta misma página en cada celular y elige el mismo código.<br>Uno es el <b>Mando</b> (tu bolsillo), los demás son receptores <b>1, 2, 3…</b></p>
+</section>
+
+<!-- ============ RECEPTOR ============ -->
+<section id="scRec" class="screen">
+  <div id="recGlow"></div>
+  <div id="recUI">
+    <div class="status-line"><span id="recDot" class="dot"></span><span id="recConn">Conectando…</span></div>
+    <div id="recWrap" style="margin:auto 0;display:flex;flex-direction:column">
+      <div class="rec-badge" id="recNum">1</div>
+      <div class="rec-state" id="recMsg">Esperando…</div>
+    </div>
+    <div class="foot" id="recMode"></div>
+    <button class="btn danger" id="recExit" style="margin-top:12px">Salir</button>
+  </div>
+</section>
+
+<!-- ============ MANDO ============ -->
+<section id="scMando" class="screen">
+  <div class="mando-head">
+    <h1>Mando</h1>
+    <div class="status-line" style="margin:0"><span id="mDot" class="dot"></span><span id="mConn">…</span></div>
+  </div>
+
+  <div class="roster" id="roster"></div>
+
+  <div class="hand" id="handBox">Luz en la mano: <b id="handN">0</b></div>
+
+  <div class="destrow">
+    <span class="lbl">Destino</span>
+    <div class="destpick" id="destPick"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="bCatch">✋ Agarrar</button>
+    <button class="btn violet" id="bThrow">➤ Lanzar</button>
+    <button class="btn" id="bSplit">⚡ Dividir</button>
+    <button class="btn" id="bMerge">⊙ Juntar</button>
+  </div>
+  <div class="mini">
+    <button class="btn" id="bReset">↺ Reiniciar</button>
+    <button class="btn danger" id="mExit">Salir</button>
+  </div>
+
+  <p class="hint" id="btHint">Control Bluetooth / teclado: &nbsp;←→ destino &nbsp;·&nbsp; Enter = Agarrar/Lanzar &nbsp;·&nbsp; manten = lanzar</p>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- utilidades ----------
+  var $ = function(id){ return document.getElementById(id); };
+  function show(screen){
+    ['scStart','scRec','scMando'].forEach(function(s){ $(s).classList.remove('active'); });
+    $(screen).classList.add('active');
+  }
+  function toast(t){
+    var el=$('toast'); el.textContent=t; el.classList.add('show');
+    clearTimeout(el._t); el._t=setTimeout(function(){ el.classList.remove('show'); },1400);
+  }
+  function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+  function randRoom(){ var c="ABCDEFGHJKMNPQRSTUVWXYZ23456789",s=""; for(var i=0;i<4;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
+
+  var MAX = 4;                 // receptores máximos
+  var BROKER = "wss://broker.hivemq.com:8884/mqtt";
+  var client=null, room="", role="", topicCmd="", topicPres="";
+
+  // recordar último código en este teléfono
+  var saved=""; try{ saved=localStorage.getItem('lv_room')||""; }catch(e){}
+  $('room').value = saved || randRoom();
+
+  // ---------- elegir rol ----------
+  Array.prototype.forEach.call(document.querySelectorAll('[data-role]'), function(b){
+    b.addEventListener('click', function(){
+      room = ($('room').value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+      if(room.length<3){ toast('Pon un código de al menos 3 letras'); return; }
+      try{ localStorage.setItem('lv_room', room); }catch(e){}
+      role = b.getAttribute('data-role');
+      topicCmd  = 'bretxy/lv/'+room+'/cmd';
+      topicPres = 'bretxy/lv/'+room+'/pres';
+      if(role==='mando') startMando(); else startRec(parseInt(role,10));
+    });
+  });
+
+  // ---------- conexión MQTT ----------
+  function connect(onMsg, onReady){
+    var cid = 'lv_'+role+'_'+Math.random().toString(16).slice(2,8);
+    client = mqtt.connect(BROKER, {clientId:cid, keepalive:30, reconnectPeriod:2000, connectTimeout:8000});
+    client.on('connect', function(){
+      client.subscribe([topicCmd, topicPres], function(){});
+      onReady && onReady();
+    });
+    client.on('reconnect', function(){ setConn(false,'Reconectando…'); });
+    client.on('close',     function(){ setConn(false,'Sin conexión'); });
+    client.on('error',     function(){ setConn(false,'Error de conexión'); });
+    client.on('message', function(t, payload){
+      var msg; try{ msg=JSON.parse(payload.toString()); }catch(e){ return; }
+      onMsg(t, msg);
+    });
+  }
+  function pub(topic, obj){ if(client && client.connected) client.publish(topic, JSON.stringify(obj)); }
+
+  var connState=true;
+  function setConn(ok, txt){
+    connState=ok;
+    if(role==='mando'){ $('mDot').className='dot '+(ok?'ok':'bad'); $('mConn').textContent=txt; }
+    else { $('recDot').className='dot '+(ok?'ok':'bad'); $('recConn').textContent=txt; }
+  }
+
+  // ===================================================================
+  //  RECEPTOR
+  // ===================================================================
+  var torchTrack=null, torchOK=false, wake=null, myNum=1, litNow=false;
+
+  function startRec(n){
+    myNum=n; show('scRec');
+    $('recNum').textContent=n;
+    $('recMsg').textContent='Esperando la luz…';
+    keepAwake();
+    setupLight().then(function(){
+      connect(recMsg, function(){ setConn(true,'Listo · recibe la luz'); });
+      // anunciar presencia cada 3s
+      sendPresence(); setInterval(sendPresence, 3000);
+    });
+  }
+
+  function keepAwake(){
+    try{ if('wakeLock' in navigator) navigator.wakeLock.request('screen').then(function(w){ wake=w; }); }catch(e){}
+    document.addEventListener('visibilitychange', function(){
+      if(document.visibilityState==='visible'){ try{ navigator.wakeLock.request('screen').then(function(w){wake=w;}); }catch(e){} }
+    });
+  }
+
+  function setupLight(){
+    // intenta linterna real (Android/Chrome). Si no, usa brillo de pantalla.
+    return navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+      .then(function(stream){
+        torchTrack=stream.getVideoTracks()[0];
+        var caps = torchTrack.getCapabilities ? torchTrack.getCapabilities() : {};
+        torchOK = !!caps.torch;
+        $('recMode').textContent = torchOK ? 'Modo linterna real' : 'Modo pantalla (este equipo no deja usar la linterna desde la web)';
+        if(!torchOK){ try{ stream.getTracks().forEach(function(t){t.stop();}); }catch(e){} torchTrack=null; }
+      })
+      .catch(function(){
+        torchOK=false; torchTrack=null;
+        $('recMode').textContent='Modo pantalla (sin permiso de cámara)';
+      });
+  }
+
+  function setLight(on){
+    litNow=on;
+    $('scRec').classList.toggle('rec-on', on);
+    $('recMsg').textContent = on ? 'LUZ AQUÍ' : 'Esperando la luz…';
+    if(torchOK && torchTrack){
+      try{ torchTrack.applyConstraints({advanced:[{torch:on}]}); }catch(e){}
+    } else {
+      $('recGlow').style.opacity = on ? '1' : '0';
+    }
+    sendPresence();
+  }
+
+  function flash(times, finalOn){
+    // efecto de llegada: parpadea y termina en finalOn
+    var i=0; var iv=setInterval(function(){
+      setLight(i%2===0); i++;
+      if(i>=times*2){ clearInterval(iv); setLight(finalOn); }
+    },90);
+  }
+
+  function recMsg(t, msg){
+    if(t!==topicCmd) return;
+    if(msg.phone!==myNum) return;
+    if(msg.type==='off'){ setLight(false); }
+    else if(msg.type==='on'){
+      if(msg.effect==='catch'){ flash(2,true); }
+      else if(msg.effect==='bounce'){ setLight(false); setTimeout(function(){flash(1,true);},120); }
+      else if(msg.effect==='merge'){ flash(3,true); }
+      else { setLight(true); }
+    }
+  }
+
+  function sendPresence(){
+    getBattery(function(b){
+      pub(topicPres, {phone:myNum, torch:torchOK, lit:litNow, batt:b, t:Date.now()});
+    });
+  }
+  function getBattery(cb){
+    try{ if(navigator.getBattery){ navigator.getBattery().then(function(bm){ cb(Math.round(bm.level*100)); }); return; } }catch(e){}
+    cb(null);
+  }
+
+  $('recExit').addEventListener('click', function(){ location.reload(); });
+
+  // ===================================================================
+  //  MANDO
+  // ===================================================================
+  var lights={}, inHand=0, dest=1;      // lights[n]=true si está encendido
+  var seen={};                           // presencia: seen[n]={t,torch,batt,lit}
+
+  function startMando(){
+    show('scMando');
+    buildRoster(); buildDest();
+    connect(mandoMsg, function(){ setConn(true,'En línea'); });
+    setInterval(pruneRoster, 2000);
+    bindButtons(); bindKeys();
+  }
+
+  function mandoMsg(t, msg){
+    if(t===topicPres){
+      seen[msg.phone]={t:msg.t||Date.now(), torch:msg.torch, batt:msg.batt, lit:msg.lit};
+      renderRoster();
+    }
+  }
+
+  function pruneRoster(){
+    var now=Date.now(), changed=false;
+    for(var k in seen){ if(now-seen[k].t>8000){ delete seen[k]; changed=true; } }
+    if(changed) renderRoster();
+  }
+
+  function buildRoster(){
+    var r=$('roster'); r.innerHTML='';
+    for(var i=1;i<=MAX;i++){
+      var c=document.createElement('div'); c.className='cell off-line'; c.id='cell'+i;
+      c.innerHTML='<span class="tag" id="tag'+i+'"></span><span class="n">'+i+'</span><span class="meta" id="meta'+i+'">—</span>';
+      r.appendChild(c);
+    }
+    renderRoster();
+  }
+  function renderRoster(){
+    for(var i=1;i<=MAX;i++){
+      var cell=$('cell'+i); if(!cell) continue;
+      var on = !!seen[i];
+      cell.classList.toggle('off-line', !on);
+      cell.classList.toggle('lit', !!lights[i]);
+      cell.classList.toggle('dest', dest===i);
+      var meta=$('meta'+i), tag=$('tag'+i);
+      if(on){
+        var s = seen[i].torch ? 'linterna' : 'pantalla';
+        if(seen[i].batt!=null) s += ' · '+seen[i].batt+'%';
+        meta.textContent=s;
+        tag.textContent = seen[i].torch ? '🔦' : '📱';
+      } else { meta.textContent='desconectado'; tag.textContent=''; }
+    }
+  }
+
+  function buildDest(){
+    var d=$('destPick'); d.innerHTML='';
+    for(var i=1;i<=MAX;i++){
+      var p=document.createElement('div'); p.className='dpill'+(i===dest?' sel':''); p.textContent=i; p.dataset.n=i;
+      p.addEventListener('click', function(){ setDest(parseInt(this.dataset.n,10)); });
+      d.appendChild(p);
+    }
+  }
+  function setDest(n){ dest=n;
+    Array.prototype.forEach.call(document.querySelectorAll('.dpill'), function(p){ p.classList.toggle('sel', parseInt(p.dataset.n,10)===dest); });
+    renderRoster(); buzz(15);
+  }
+  function cycleDest(dir){ var n=dest+dir; if(n>MAX)n=1; if(n<1)n=MAX; setDest(n); }
+
+  function setHand(v){ inHand=Math.max(0,v); $('handN').textContent=inHand;
+    $('handBox').style.borderStyle = inHand>0?'solid':'dashed';
+    $('handBox').style.borderColor = inHand>0?'var(--accent)':'var(--line)';
+  }
+
+  // --- acciones del truco ---
+  function doCatch(){           // agarrar la luz del destino seleccionado
+    if(!lights[dest]){ toast('El '+dest+' no está encendido'); buzz([30,40,30]); return; }
+    lights[dest]=false; pub(topicCmd,{type:'off',phone:dest});
+    setHand(inHand+1); renderRoster(); toast('Luz agarrada del '+dest); buzz(30);
+  }
+  function doThrow(){           // lanzar al destino seleccionado
+    if(inHand<=0){ toast('No tienes luz en la mano'); buzz([30,40,30]); return; }
+    var effect = lights[dest] ? 'merge' : 'catch';
+    lights[dest]=true; pub(topicCmd,{type:'on',phone:dest,effect:effect});
+    setHand(inHand-1); renderRoster();
+    toast(effect==='merge'?'Luces juntadas en el '+dest:'Luz lanzada al '+dest); buzz(40);
+  }
+  function doSplit(){           // dividir: el destino sigue encendido y te llevas una copia
+    if(!lights[dest]){ toast('El '+dest+' no está encendido'); buzz([30,40,30]); return; }
+    setHand(inHand+1); toast('Luz dividida (una copia en la mano)'); buzz([20,30,20]);
+  }
+  function doMerge(){           // juntar: lanzar sobre uno ya encendido
+    if(inHand<=0){ toast('No tienes luz en la mano'); buzz([30,40,30]); return; }
+    if(!lights[dest]){ toast('El '+dest+' no está encendido (usa Lanzar)'); buzz([30,40,30]); return; }
+    pub(topicCmd,{type:'on',phone:dest,effect:'merge'}); setHand(inHand-1);
+    toast('Luces juntadas en el '+dest); buzz(40);
+  }
+  function doReset(){
+    for(var i=1;i<=MAX;i++){ lights[i]=false; pub(topicCmd,{type:'off',phone:i}); }
+    setHand(0); renderRoster(); toast('Todo reiniciado'); buzz([20,40,20,40]);
+  }
+
+  function bindButtons(){
+    $('bCatch').addEventListener('click',doCatch);
+    $('bThrow').addEventListener('click',doThrow);
+    $('bSplit').addEventListener('click',doSplit);
+    $('bMerge').addEventListener('click',doMerge);
+    $('bReset').addEventListener('click',doReset);
+    $('mExit').addEventListener('click',function(){ location.reload(); });
+    Array.prototype.forEach.call(document.querySelectorAll('.dpill'),function(){});
+  }
+
+  // --- control por Bluetooth / teclado ---
+  // Muchos controles Bluetooth envían teclas de volumen o flechas.
+  function bindKeys(){
+    document.addEventListener('keydown', function(e){
+      var k=e.key;
+      if(k==='ArrowRight'||k==='AudioVolumeUp'||k==='d'){ cycleDest(1); e.preventDefault(); }
+      else if(k==='ArrowLeft'||k==='AudioVolumeDown'||k==='a'){ cycleDest(-1); e.preventDefault(); }
+      else if(k==='Enter'||k===' '){ smartPrimary(); e.preventDefault(); }
+      else if(k==='s'){ doSplit(); }
+      else if(k==='j'){ doMerge(); }
+      else if(k==='r'){ doReset(); }
+    });
+  }
+  function smartPrimary(){
+    // si el destino está encendido y no tengo luz -> agarrar; si tengo luz -> lanzar
+    if(inHand>0) doThrow();
+    else if(lights[dest]) doCatch();
+    else toast('Elige un celular encendido');
+  }
+
+  // estado inicial de la mano
+  setHand(0);
+
+})();
+</script>
+</body>
+</html>
