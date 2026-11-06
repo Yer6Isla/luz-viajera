@@ -245,17 +245,8 @@
     });
   }
 
-  var isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
   function setupLight(){
-    // iPhone/iPad: la web NO puede usar la linterna trasera -> SIEMPRE pantalla blanca.
-    if(isiOS){
-      torchOK=false; torchTrack=null;
-      $('recMode').textContent='Modo pantalla (iPhone: se ilumina la PANTALLA, no la linterna)';
-      return Promise.resolve();
-    }
-    // Android/Chrome: intenta linterna real; si no, pantalla.
+    // Intenta la linterna real (Android y también iPhone reciente). Si no hay, usa pantalla.
     return navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
       .then(function(stream){
         torchTrack=stream.getVideoTracks()[0];
