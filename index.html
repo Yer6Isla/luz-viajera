@@ -70,6 +70,7 @@
   .hand b{color:var(--accent);font-size:1.2rem}
   .destrow{display:flex;gap:8px;margin-bottom:12px;align-items:center}
   .destrow .lbl{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:1px}
+  .lbl{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:1px}
   .destpick{display:flex;gap:6px;flex:1;flex-wrap:wrap}
   .dpill{flex:1;min-width:44px;text-align:center;padding:10px 0;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-weight:700;cursor:pointer}
   .dpill.sel{background:var(--accent);color:#042;border-color:var(--accent)}
@@ -128,12 +129,13 @@
     <div class="status-line" style="margin:0"><span id="mDot" class="dot"></span><span id="mConn">…</span></div>
   </div>
 
+  <div class="lbl" style="margin-bottom:6px">Receptores · celulares de la mesa</div>
   <div class="roster" id="roster"></div>
 
   <div class="hand" id="handBox">Luz en la mano: <b id="handN">0</b></div>
 
   <div class="destrow">
-    <span class="lbl">Destino</span>
+    <span class="lbl">Apuntar a</span>
     <div class="destpick" id="destPick"></div>
   </div>
 
