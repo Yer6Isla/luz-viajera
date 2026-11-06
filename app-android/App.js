@@ -47,7 +47,7 @@ export default function App() {
   const [view, setView] = useState('decoy');
 
   useEffect(() => {
-    Store.load().then((c) => setCfg({ room: c.room || randRoom(), role: c.role || null, pin: c.pin || DEFAULT_PIN }));
+    Store.load().then((c) => setCfg({ room: c.room || 'BRETXY', role: c.role || null, pin: c.pin || DEFAULT_PIN }));
   }, []);
   const update = (patch) => setCfg((p) => { const n = { ...p, ...patch }; Store.save(n); return n; });
 

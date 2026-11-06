@@ -181,7 +181,7 @@
 
   // recordar último código en este teléfono
   var saved=""; try{ saved=localStorage.getItem('lv_room')||""; }catch(e){}
-  $('room').value = saved || randRoom();
+  $('room').value = saved || 'BRETXY';
 
   // ---------- elegir rol ----------
   Array.prototype.forEach.call(document.querySelectorAll('[data-role]'), function(b){
