@@ -245,8 +245,17 @@
     });
   }
 
+  var isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
   function setupLight(){
-    // intenta linterna real (Android/Chrome). Si no, usa brillo de pantalla.
+    // iPhone/iPad: la web NO puede usar la linterna trasera -> SIEMPRE pantalla blanca.
+    if(isiOS){
+      torchOK=false; torchTrack=null;
+      $('recMode').textContent='Modo pantalla (iPhone: se ilumina la PANTALLA, no la linterna)';
+      return Promise.resolve();
+    }
+    // Android/Chrome: intenta linterna real; si no, pantalla.
     return navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
       .then(function(stream){
         torchTrack=stream.getVideoTracks()[0];
@@ -268,7 +277,10 @@
     if(torchOK && torchTrack){
       try{ torchTrack.applyConstraints({advanced:[{torch:on}]}); }catch(e){}
     } else {
-      $('recGlow').style.opacity = on ? '1' : '0';
+      // Modo pantalla: cubre TODO en blanco (por encima de la interfaz)
+      var g=$('recGlow');
+      g.style.opacity = on ? '1' : '0';
+      g.style.zIndex = on ? '999' : '1';
     }
     sendPresence();
   }
