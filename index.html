@@ -327,7 +327,14 @@
   function mandoMsg(t, msg){
     if(t===topicPres){
       seen[msg.phone]={t:msg.t||Date.now(), torch:msg.torch, batt:msg.batt, lit:msg.lit};
+      autoAim();
       renderRoster();
+    }
+  }
+  // Si el destino actual no está conectado, apunta solo al primer receptor conectado.
+  function autoAim(){
+    if(!seen[dest]){
+      for(var i=1;i<=MAX;i++){ if(seen[i]){ setDest(i); break; } }
     }
   }
 
@@ -389,12 +396,12 @@
     lights[dest]=false; pub(topicCmd,{type:'off',phone:dest});
     setHand(inHand+1); renderRoster(); toast('Luz agarrada del '+dest); buzz(30);
   }
-  function doThrow(){           // lanzar al destino seleccionado
-    if(inHand<=0){ toast('No tienes luz en la mano'); buzz([30,40,30]); return; }
+  function doThrow(){           // lanzar al destino (si no tienes luz en mano, la "conjura")
     var effect = lights[dest] ? 'merge' : 'catch';
     lights[dest]=true; pub(topicCmd,{type:'on',phone:dest,effect:effect});
-    setHand(inHand-1); renderRoster();
-    toast(effect==='merge'?'Luces juntadas en el '+dest:'Luz lanzada al '+dest); buzz(40);
+    if(inHand>0) setHand(inHand-1);   // si tenías luz en mano, la sueltas; si no, aparece
+    renderRoster();
+    toast(effect==='merge'?'Luces juntadas en el '+dest:'Luz encendida en el '+dest); buzz(40);
   }
   function doSplit(){           // dividir: el destino sigue encendido y te llevas una copia
     if(!lights[dest]){ toast('El '+dest+' no está encendido'); buzz([30,40,30]); return; }

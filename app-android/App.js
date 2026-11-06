@@ -88,6 +88,10 @@ function useEngine(room, active) {
       if (t !== topicPres) return;
       let m; try { m = JSON.parse(payload.toString()); } catch (e) { return; }
       sRef.current = { ...sRef.current, [m.phone]: { t: m.t || Date.now(), torch: m.torch } };
+      // Apuntar solo al receptor conectado si el destino actual no lo está
+      if (!sRef.current[dRef.current]) {
+        for (let i = 1; i <= MAX; i++) { if (sRef.current[i]) { dRef.current = i; setDest(i); break; } }
+      }
       setSeen({ ...sRef.current });
     });
     const prune = setInterval(() => {
@@ -109,9 +113,10 @@ function useEngine(room, active) {
     setLit(dRef.current, false); pub({ type: 'off', phone: dRef.current }); setHand(hRef.current + 1); buzz(35); return true;
   }, []);
   const doThrow = useCallback(() => {
-    if (hRef.current <= 0) { buzzErr(); return false; }
     const e = lRef.current[dRef.current] ? 'merge' : 'catch';
-    setLit(dRef.current, true); pub({ type: 'on', phone: dRef.current, effect: e }); setHand(hRef.current - 1); buzz(45); return true;
+    setLit(dRef.current, true); pub({ type: 'on', phone: dRef.current, effect: e });
+    if (hRef.current > 0) setHand(hRef.current - 1); // si no tenías luz, "aparece"
+    buzz(45); return true;
   }, []);
   const smartPrimary = useCallback(() => {
     if (hRef.current > 0) doThrow();
