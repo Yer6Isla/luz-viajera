@@ -293,7 +293,7 @@ function MandoPanel({ cfg, onExit }) {
         {[1, 2, 3, 4].map((i) => {
           const on = !!e.seen[i]; const lit = !!e.lights[i];
           return (
-            <View key={i} style={[s.cell, !on && s.cellOff, lit && s.cellLit, e.dest === i && s.cellDest]}>
+            <View key={i} style={[s.cell, !on && s.cellOff, lit && s.cellLit]}>
               <Text style={[s.cellN, lit && { color: C.on }]}>{i}</Text>
               <Text style={s.cellMeta}>{on ? '🔦 lista' : 'off'}</Text>
             </View>

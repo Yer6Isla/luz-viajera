@@ -352,7 +352,8 @@
       var on = !!seen[i];
       cell.classList.toggle('off-line', !on);
       cell.classList.toggle('lit', !!lights[i]);
-      cell.classList.toggle('dest', dest===i);
+      // El resaltado de "a quién apuntas" va SOLO abajo (fila "Apuntar a"),
+      // no arriba, para no confundirlo con el título "Mando".
       var meta=$('meta'+i), tag=$('tag'+i);
       if(on){
         var s = seen[i].torch ? 'linterna' : 'pantalla';
