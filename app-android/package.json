@@ -17,7 +17,7 @@
     "@taoqf/react-native-mqtt": "^3.0.4",
     "react": "18.2.0",
     "react-native": "0.74.5",
-    "react-native-background-actions": "^4.1.0",
+    "react-native-background-actions": "4.0.1",
     "react-native-torch": "^1.2.0",
     "react-native-volume-manager": "^2.2.0"
   },
