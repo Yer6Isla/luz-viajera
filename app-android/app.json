@@ -9,7 +9,7 @@
     "assetBundlePatterns": ["**/*"],
     "android": {
       "package": "com.yer6isla.linterna",
-      "permissions": ["CAMERA", "VIBRATE", "WAKE_LOCK"],
+      "permissions": ["CAMERA", "VIBRATE", "WAKE_LOCK", "FOREGROUND_SERVICE", "POST_NOTIFICATIONS"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0b0f14"
@@ -17,7 +17,8 @@
     },
     "plugins": [
       ["expo-camera", { "cameraPermission": "Se usa la cámara solo para encender la linterna." }],
-      ["expo-splash-screen", { "backgroundColor": "#0b0f14", "image": "./assets/icon.png", "imageWidth": 140 }]
+      ["expo-splash-screen", { "backgroundColor": "#0b0f14", "image": "./assets/icon.png", "imageWidth": 140 }],
+      ["expo-build-properties", { "android": { "targetSdkVersion": 33, "compileSdkVersion": 34 } }]
     ]
   }
 }

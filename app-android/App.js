@@ -3,10 +3,12 @@ import {
   View, Text, TextInput, TouchableOpacity, Pressable, StyleSheet,
   Vibration, ScrollView, StatusBar,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
 import { useKeepAwake } from 'expo-keep-awake';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VolumeManager } from 'react-native-volume-manager';
+import BackgroundService from 'react-native-background-actions';
+import Torch from 'react-native-torch';
 import mqtt from '@taoqf/react-native-mqtt';
 
 // ================== Configuración ==================
@@ -40,6 +42,57 @@ const Store = {
   async load() { try { const r = await AsyncStorage.getItem('lv_cfg'); return r ? JSON.parse(r) : {}; } catch (e) { return {}; } },
   async save(c) { try { await AsyncStorage.setItem('lv_cfg', JSON.stringify(c)); } catch (e) {} },
 };
+
+// ================== Linterna nativa (funciona sin pantalla, en segundo plano) ==================
+const setTorchNative = (on) => { try { Torch.switchState(on); } catch (e) {} };
+const bgSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let bgLit = false;
+
+const bgOptions = (room, num) => ({
+  taskName: 'Linterna',
+  taskTitle: 'Linterna',
+  taskDesc: 'Activa',
+  taskIcon: { name: 'ic_launcher', type: 'mipmap' },
+  color: '#0b0f14',
+  parameters: { room: String(room), num: String(num) },
+});
+
+// Tarea que corre en segundo plano: escucha al Mando y enciende la linterna real.
+const bgReceiverTask = async (params) => {
+  const room = params.room;
+  const num = parseInt(params.num, 10);
+  const topicCmd = `bretxy/lv/${room}/cmd`;
+  const topicPres = `bretxy/lv/${room}/pres`;
+  const flash = async (times, finalOn) => {
+    for (let i = 0; i < times; i++) { setTorchNative(true); await bgSleep(90); setTorchNative(false); await bgSleep(90); }
+    setTorchNative(finalOn); bgLit = finalOn;
+  };
+  const client = connectMqtt(`lv_${num}_bg_${Math.random().toString(16).slice(2, 7)}`);
+  const send = () => { try { if (client.connected) client.publish(topicPres, JSON.stringify({ phone: num, torch: true, lit: bgLit, t: Date.now() })); } catch (e) {} };
+  client.on('connect', () => { try { client.subscribe(topicCmd); } catch (e) {} send(); });
+  client.on('message', (t, p) => {
+    if (t !== topicCmd) return;
+    let m; try { m = JSON.parse(p.toString()); } catch (e) { return; }
+    if (m.phone !== num) return;
+    if (m.type === 'off') { bgLit = false; setTorchNative(false); }
+    else if (m.type === 'on') {
+      if (m.effect === 'catch') flash(2, true);
+      else if (m.effect === 'bounce') { setTorchNative(false); setTimeout(() => flash(1, true), 120); }
+      else if (m.effect === 'merge') flash(3, true);
+      else { bgLit = true; setTorchNative(true); }
+    }
+  });
+  while (BackgroundService.isRunning()) { send(); await bgSleep(3000); }
+  try { setTorchNative(false); client.end(true); } catch (e) {}
+};
+
+async function startBg(room, num) {
+  try {
+    if (BackgroundService.isRunning()) { await BackgroundService.stop(); }
+    await BackgroundService.start(bgReceiverTask, bgOptions(room, num));
+  } catch (e) {}
+}
+async function stopBg() { try { if (BackgroundService.isRunning()) await BackgroundService.stop(); } catch (e) {} setTorchNative(false); }
 
 // ================== App ==================
 export default function App() {
@@ -176,34 +229,16 @@ function Decoy({ cfg, onSecret }) {
   const engine = useEngine(cfg.room, isMando);
   useVolumeControl(isMando, engine.cycleDest, engine.smartPrimary);
 
-  const setLight = useCallback((v) => { onRef.current = v; setOn(v); }, []);
-  const toggle = () => { if (perm && !perm.granted) { requestPerm(); return; } setLight(!onRef.current); };
-  const flash = useCallback((times, finalOn) => {
-    let i = 0; const iv = setInterval(() => { setLight(i % 2 === 0); i++; if (i >= times * 2) { clearInterval(iv); setLight(finalOn); } }, 90);
-  }, [setLight]);
+  // permiso de cámara (algunos equipos lo piden para la linterna)
+  useEffect(() => { if (perm && !perm.granted) requestPerm(); }, [perm]);
 
-  // Receptor: escucha al Mando (sin que se note)
+  const setLight = useCallback((v) => { onRef.current = v; setOn(v); setTorchNative(v); }, []);
+  const toggle = () => setLight(!onRef.current);
+
+  // Receptor: corre en SEGUNDO PLANO (sigue encendiendo aunque bloquees o cierres la app)
   useEffect(() => {
-    if (!isReceiver) return;
-    const topicCmd = `bretxy/lv/${cfg.room}/cmd`;
-    const topicPres = `bretxy/lv/${cfg.room}/pres`;
-    const client = connectMqtt(`lv_${num}_${Math.random().toString(16).slice(2, 8)}`);
-    client.on('connect', () => { client.subscribe(topicCmd); send(); });
-    client.on('message', (t, payload) => {
-      if (t !== topicCmd) return;
-      let m; try { m = JSON.parse(payload.toString()); } catch (e) { return; }
-      if (m.phone !== num) return;
-      if (m.type === 'off') setLight(false);
-      else if (m.type === 'on') {
-        if (m.effect === 'catch') flash(2, true);
-        else if (m.effect === 'bounce') { setLight(false); setTimeout(() => flash(1, true), 120); }
-        else if (m.effect === 'merge') flash(3, true);
-        else setLight(true);
-      }
-    });
-    const send = () => { if (client.connected) client.publish(topicPres, JSON.stringify({ phone: num, torch: true, lit: onRef.current, t: Date.now() })); };
-    const pi = setInterval(send, 3000);
-    return () => { clearInterval(pi); try { client.end(true); } catch (e) {} };
+    if (isReceiver) startBg(cfg.room, num);
+    else stopBg();
   }, [isReceiver, num, cfg.room]);
 
   const startHold = () => { holdTimer.current = setTimeout(onSecret, UNLOCK_HOLD_MS); };
@@ -211,7 +246,6 @@ function Decoy({ cfg, onSecret }) {
 
   return (
     <View style={s.flashRoot}>
-      {perm && perm.granted && <CameraView style={s.hiddenCam} facing="back" enableTorch={on} />}
       <Pressable onPressIn={startHold} onPressOut={endHold}><Text style={s.flashTitle}>Flashlight</Text></Pressable>
       <View style={s.flashCenter}>
         <TouchableOpacity activeOpacity={0.8} onPress={toggle} style={[s.powerBtn, on && s.powerBtnOn]}>
@@ -254,7 +288,10 @@ function Setup({ cfg, update, onMando, onReceiver, onClose }) {
   const [room, setRoom] = useState(cfg.room);
   const [pin, setPin] = useState(cfg.pin);
   const saveRoom = (t) => { const v = t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); setRoom(v); update({ room: v }); };
-  const chooseRole = (r) => { update({ role: r, room }); r === 'mando' ? onMando() : onReceiver(); };
+  const chooseRole = (r) => {
+    update({ role: r, room });
+    if (r === 'mando') { stopBg(); onMando(); } else { onReceiver(); }
+  };
   return (
     <ScrollView contentContainerStyle={s.setupWrap}>
       <Text style={s.h1}>Panel</Text>
